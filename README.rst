@@ -12,21 +12,23 @@ To follow this session you'll need Apache Kafka and ClickHouse servers. I'll be 
 
 Set up Apache Kafka cluster (locally on Mac)
 ++++++++++++++++++++++++++++++++++++++++++++
-#. Install Apache Kafka with brew. I used `kafka homebrew formulae <https://formulae.brew.sh/formula/kafka>_`.
-#. Start Zookeeper by running `/usr/local/bin/zookeeper-server-start /usr/local/etc/zookeeper/zoo.cfg`.
-#. Start Apache Kafka by running `/usr/local/bin/kafka-server-start /usr/local/etc/kafka/server.properties`.
+#. Install Apache Kafka with brew. I used `kafka homebrew formula <https://formulae.brew.sh/formula/kafka>`_.
+#. Start Zookeeper by running ``/usr/local/bin/zookeeper-server-start /usr/local/etc/zookeeper/zoo.cfg``.
+#. Start Apache Kafka by running ``/usr/local/bin/kafka-server-start /usr/local/etc/kafka/server.properties``.
+#. Install `kcat <https://github.com/edenhill/kcat>`_. We'll use this tool to send data into the topic.
+#. This repository contains a simple kcat.config, which will be enough if you're using Apache Kafka locally. Make sure that you're located at the repository's directory when running kcat commands.
 
 You're ready to create and populate topics.
 
 Set up ClickHouse cluster (using Docker)
 ++++++++++++++++++++++++++++++++++++++++++++
-#. Pull Docker image `docker pull clickhouse/clickhouse-server`, read more in `docker hub reference page <https://hub.docker.com/r/clickhouse/clickhouse-server/>`.
-#. Start server instance `docker run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server`.
-#. Most convenient way to run SQL queries is to use `ClickHouse native client <https://hub.docker.com/r/clickhouse/clickhouse-client>`_ . To connect to native client run `run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server`.
+#. Pull Docker image ``docker pull clickhouse/clickhouse-server``, read more in `docker hub reference page <https://hub.docker.com/r/clickhouse/clickhouse-server/>`_.
+#. Start server instance ``docker run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server``.
+#. Most convenient way to run SQL queries is to use `ClickHouse native client <https://hub.docker.com/r/clickhouse/clickhouse-client>`_ . To connect to native client run ``run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server``.
 
 You're ready to send requests to ClickHouse server, for example try
 
-.. sql::
+.. code:: sql
 
     SHOW TABLES
 
@@ -35,18 +37,66 @@ Unzip example data
 
 In this repository you can find two files with data which we'll use to inject into Apache Kafka topic: classes_years_2_12.ndjson.zip and classes_years_13_22.ndjson.zip. Unzip them to retrieve ndjson files. ndjson stands for *Newline Delimited JSON* and is used to store streaming structured data.
 
-- `classes_years_2_12.ndjson` contains data for years 2002 - 2012
-- `classes_years_13_22.ndjson` contains data for years 2013 - 2022
+- **classes_years_2_12.ndjson** contains data for years 2002 - 2012
+- **classes_years_13_22.ndjson** contains data for years 2013 - 2022
 
+Data is based on following assumptions and simplifications:
+There are 18 subjects, 3 classes per day. Educational year starts in September and finishes in May. Each student spends 7 years in Hogwarts.
 
 Step # 1: create and populate a topic with class attendance data
 -----------------------------------------------------------------
-#. Create Apache Kafka topic `kafka-topics --bootstrap-server localhost:9092 --topic class-attendance --create`.
-#.
+#. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic class-attendance --create``.
+#. Populate topic with the content of **classes_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < classes_years_2_12.ndjson``.
 
 
 Step # 2: Bring data from the topic into ClickHouse table
 ------------------------------------------------------------
+To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka/>`_. To link it to the destination table we'll create a materialized view
+
+#. Create ClickHouse Kafka engine table. We use **JSONAsString** to have granular control of each property later. Alternatively you can try **JSONEachRow**, but pay attention to complex json objects.
+
+.. code:: sql
+
+    CREATE TABLE class_attendance_queue
+    (
+        `message` String
+    )
+    ENGINE = Kafka
+    SETTINGS
+        kafka_broker_list = 'host.docker.internal:9092',
+        kafka_topic_list = 'class-attendance',
+        kafka_group_name = 'group1',
+        kafka_format = 'JSONAsString'
+
+#. Create the destination table where the data should be stored
+
+.. code:: sql
+
+    CREATE TABLE class_attendance
+    (
+        `timestamp` DateTime,
+        `subject` String,
+        `teacher` String,
+        `room` String,
+        `points` Int8,
+        `student` Tuple(name String, house String)
+    )
+    ENGINE = MergeTree
+    ORDER BY timestamp
+
+#. Create materialised view to establish connection with ClickHouse Kafka Engine
+
+.. code:: sql
+
+    CREATE MATERIALIZED VIEW materialized_view TO class_attendance
+    AS SELECT
+        fromUnixTimestamp64Milli(JSONExtractUInt(message, 'timestamp')) AS timestamp,
+        JSONExtractString(message, 'subject') AS subject,
+        JSONExtractString(message, 'teacher') AS teacher,
+        JSONExtractString(message, 'room') AS room,
+        toInt8(JSONExtractInt(message, 'points')) AS points,
+        JSONExtract(message, 'student', 'Tuple(String,String)') AS student
+    FROM class_attendance_queue
 
 
 Resources and additional materials
