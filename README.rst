@@ -133,13 +133,13 @@ Step # 3: Transform data into another table
     GROUP BY (timestamp, subject)
     ORDER BY timestamp ASC
 
-3. If you run a query
+3. If you run a query below, it will return 0 lines.
 
 .. code:: sql
 
     SELECT count(*) FROM default.student_presence
 
-it will return 0 lines. The reason is that by design materialised views will not pull existing data from the origin table. Only new data will be populated. For the sake of our demo you can either add more data into the Apahce Kafka topic `class-attendance` or you can copy old lines manually from `class_attendance` into `student_presence` by running
+ This is because by design materialised views will pull only new data from the source table. For the sake of our demo you can either add more data into the Apahce Kafka topic **class-attendance** or you can copy old lines manually from **class_attendance** into **student_presence** by running
 
 .. code:: sql
 
