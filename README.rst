@@ -53,7 +53,7 @@ Step # 2: Bring data from the topic into ClickHouse table
 ------------------------------------------------------------
 To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka/>`_. To link it to the destination table we'll create a materialized view
 
-#. Create ClickHouse Kafka engine table. We use **JSONAsString** to have granular control of each property later. Alternatively you can try **JSONEachRow**, but pay attention to complex json objects.
+1. Create ClickHouse Kafka engine table. We use **JSONAsString** to have granular control of each property later. Alternatively you can try **JSONEachRow**, but pay attention to complex json objects.
 
 .. code:: sql
 
@@ -68,7 +68,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
         kafka_group_name = 'group1',
         kafka_format = 'JSONAsString'
 
-#. Create the destination table where the data should be stored
+2. Create the destination table where the data should be stored
 
 .. code:: sql
 
@@ -84,7 +84,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
     ENGINE = MergeTree
     ORDER BY timestamp
 
-#. Create materialised view to establish connection with ClickHouse Kafka Engine:
+3. Create materialised view to establish connection with ClickHouse Kafka Engine:
 
 .. code:: sql
 
@@ -98,7 +98,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
         JSONExtract(message, 'student', 'Tuple(String,String)') AS student
     FROM class_attendance_queue
 
-#. Test that you have the data:
+4. Test that you have the data:
 
 .. code:: sql
 
@@ -106,7 +106,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
 
 Step # 3: Transform data into another table
 --------------------------------------------
-#. Create a new destination table of type MergeTree
+1. Create a new destination table of type MergeTree
 
 .. code:: sql
 
@@ -119,7 +119,7 @@ Step # 3: Transform data into another table
     ENGINE = MergeTree
     ORDER BY timestamp
 
-#. Create a new destination table of type MergeTree
+2. Create a new destination table of type MergeTree
 
 .. code:: sql
 
@@ -133,7 +133,7 @@ Step # 3: Transform data into another table
     GROUP BY (timestamp, subject)
     ORDER BY timestamp ASC
 
-#. If you run a query
+3. If you run a query
 
 .. code:: sql
 
@@ -151,7 +151,7 @@ it will return 0 lines. The reason is that by design materialised views will not
     FROM class_attendance
     GROUP BY (timestamp, subject)
 
-#. Now you can see number of all rows by running
+4. Now you can see number of all rows by running
 
 .. code:: sql
 
@@ -160,7 +160,7 @@ it will return 0 lines. The reason is that by design materialised views will not
 
 Step # 4: Use AggregateFunction and SummingMergeTree
 -----------------------------------------------------
-#. Create a destination table of type SummingMergeTree
+1. Create a destination table of type SummingMergeTree
 
 .. code:: sql
 
@@ -176,7 +176,7 @@ Step # 4: Use AggregateFunction and SummingMergeTree
     PARTITION BY tuple()
     ORDER BY (day, subject)
 
-#. Create a materialized view and use maxState
+2. Create a materialized view and use maxState
 
 .. code:: sql
 
@@ -195,7 +195,7 @@ Step # 4: Use AggregateFunction and SummingMergeTree
         day ASC,
         subject ASC
 
-#. As mentioned before, materialized view will send only new records into the destination table, so if you want to bring existing records, run:
+3. As mentioned before, materialized view will send only new records into the destination table, so if you want to bring existing records, run:
 
 .. code:: sql
 
@@ -210,7 +210,7 @@ Step # 4: Use AggregateFunction and SummingMergeTree
     GROUP BY day, subject
     ORDER BY day, subject
 
-#. maxState, minState and avgState calculate intermediate values, and by themselves they don't bring any value. You can try retrieving first 10 lines to see that there is no readable values in this table.
+4. maxState, minState and avgState calculate intermediate values, and by themselves they don't bring any value. You can try retrieving first 10 lines to see that there is no readable values in this table.
 
 .. code:: sql
 
@@ -234,10 +234,10 @@ Resources and additional materials
 ----------------------------------
 #. `Official docs for Apache Kafka <https://kafka.apache.org/>`_.
 #. `Official docs for ClickHouse <https://clickhouse.com/docs/en/intro>`_.
-#.
+#. How to start working with `Aiven for ClickHouse® <https://developer.aiven.io/docs/products/clickhouse/getting-started>`_.
+#. `ClickHouse Kafka engine <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka>`_.
 
 
 License
 -------
-
 This work is licensed under the Apache License, Version 2.0. Full license text is available in the LICENSE file and at http://www.apache.org/licenses/LICENSE-2.0.txt
