@@ -84,7 +84,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
     ENGINE = MergeTree
     ORDER BY timestamp
 
-#. Create materialised view to establish connection with ClickHouse Kafka Engine
+#. Create materialised view to establish connection with ClickHouse Kafka Engine:
 
 .. code:: sql
 
@@ -98,11 +98,143 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
         JSONExtract(message, 'student', 'Tuple(String,String)') AS student
     FROM class_attendance_queue
 
+#. Test that you have the data:
+
+.. code:: sql
+
+    SELECT count(*) FROM class_attendance
+
+Step # 3: Transform data into another table
+--------------------------------------------
+#. Create a new destination table of type MergeTree
+
+.. code:: sql
+
+    CREATE TABLE student_presence
+    (
+        `timestamp` DateTime,
+        `subject` String,
+        `studentCount` UInt16
+    )
+    ENGINE = MergeTree
+    ORDER BY timestamp
+
+#. Create a new destination table of type MergeTree
+
+.. code:: sql
+
+    CREATE MATERIALIZED VIEW student_presence_mv
+    TO student_presence
+    AS SELECT
+        timestamp,
+        subject,
+        count(student) AS studentCount
+    FROM class_attendance
+    GROUP BY (timestamp, subject)
+    ORDER BY timestamp ASC
+
+#. If you run a query
+
+.. code:: sql
+
+    SELECT count(*) FROM default.student_presence
+
+it will return 0 lines. The reason is that by design materialised views will not pull existing data from the origin table. Only new data will be populated. For the sake of our demo you can either add more data into the Apahce Kafka topic `class-attendance` or you can copy old lines manually from `class_attendance` into `student_presence` by running
+
+.. code:: sql
+
+    INSERT INTO student_presence
+    SELECT
+        timestamp,
+        subject,
+        count(student) AS studentCount
+    FROM class_attendance
+    GROUP BY (timestamp, subject)
+
+#. Now you can see number of all rows by running
+
+.. code:: sql
+
+    SELECT count(*) FROM default.student_presence
+
+
+Step # 4: Use AggregateFunction and SummingMergeTree
+-----------------------------------------------------
+#. Create a destination table of type SummingMergeTree
+
+.. code:: sql
+
+    CREATE TABLE student_aggregates_daily
+    (
+        `day` DateTime,
+        `subject` String,
+        `max_interm_state` AggregateFunction(max, UInt16),
+        `min_interm_state` AggregateFunction(min, UInt16),
+        `avg_interm_state` AggregateFunction(avg, UInt16)
+    )
+    ENGINE = SummingMergeTree
+    PARTITION BY tuple()
+    ORDER BY (day, subject)
+
+#. Create a materialized view and use maxState
+
+.. code:: sql
+
+    CREATE MATERIALIZED VIEW student_aggregates_daily_mv TO student_aggregates_daily AS
+    SELECT
+        toStartOfDay(timestamp) AS day,
+        subject,
+        maxState(studentCount) AS max_intermediate_state,
+        minState(studentCount) AS min_intermediate_state,
+        avgState(studentCount) AS avg_intermediate_state
+    FROM default.student_presence
+    GROUP BY
+        day,
+        subject
+    ORDER BY
+        day ASC,
+        subject ASC
+
+#. As mentioned before, materialized view will send only new records into the destination table, so if you want to bring existing records, run:
+
+.. code:: sql
+
+    INSERT INTO student_aggregates_daily
+    SELECT
+      toStartOfDay(timestamp) as day,
+      subject,
+      maxState(studentCount) AS max_intermediate_state,
+      minState(studentCount) AS min_intermediate_state,
+      avgState(studentCount) AS avg_intermediate_state
+    FROM default.student_presence
+    GROUP BY day, subject
+    ORDER BY day, subject
+
+#. maxState, minState and avgState calculate intermediate values, and by themselves they don't bring any value. You can try retrieving first 10 lines to see that there is no readable values in this table.
+
+.. code:: sql
+
+    SELECT * FROM default.student_aggregates_daily LIMIT 10
+
+To properly select the aggregated data run
+
+.. code:: sql
+
+    SELECT
+      day,
+      subject,
+      maxMerge(max_intermediate_state) AS max,
+      minMerge(min_intermediate_state) AS min,
+      avgMerge(avg_intermediate_state) AS avg
+    FROM student_aggregates_daily23
+    GROUP BY (day, subject)
+    ORDER BY (day, subject)
 
 Resources and additional materials
 ----------------------------------
 #. `Official docs for Apache Kafka <https://kafka.apache.org/>`_.
 #. `Official docs for ClickHouse <https://clickhouse.com/docs/en/intro>`_.
+#.
 
 
 License
