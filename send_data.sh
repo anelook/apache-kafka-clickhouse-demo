@@ -1,7 +1,7 @@
 #!/bin/bash
 
 while read line; do
-    echo $line | kcat -F kcat.config -P -t test-manual-items
+    echo $line | kcat -F kcat.config -P -t class-attendance
 
      echo "Sent message"
 
