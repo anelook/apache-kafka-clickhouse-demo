@@ -37,8 +37,8 @@ Unzip example data
 
 In this repository you can find two files with data which we'll use to inject into Apache Kafka topic: classes_years_2_12.ndjson.zip and classes_years_13_22.ndjson.zip. Unzip them to retrieve ndjson files. ndjson stands for *Newline Delimited JSON* and is used to store streaming structured data.
 
-- **classes_years_2_12.ndjson** contains data for years 2002 - 2012
-- **classes_years_13_22.ndjson** contains data for years 2013 - 2022
+- **classes_years_2_12.ndjson** contains data for years 2002 - 2012 (2 615 075 items from 1030867200000 till 1368453600000)
+- **classes_years_13_22.ndjson** contains data for years 2013 - 2022 (2 649 615 items from 1378022400000 till 1652450400000)
 
 Data is based on following assumptions and simplifications:
 There are 18 subjects, 3 classes per day. Educational year starts in September and finishes in May. Each student spends 7 years in Hogwarts.
@@ -47,7 +47,6 @@ Step # 1: create and populate a topic with class attendance data
 -----------------------------------------------------------------
 #. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic class-attendance --create``.
 #. Populate topic with the content of **classes_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < classes_years_2_12.ndjson``.
-
 
 Step # 2: Bring data from the topic into ClickHouse table
 ------------------------------------------------------------
@@ -236,6 +235,9 @@ Resources and additional materials
 #. `Official docs for ClickHouse <https://clickhouse.com/docs/en/intro>`_.
 #. How to start working with `Aiven for ClickHouse® <https://developer.aiven.io/docs/products/clickhouse/getting-started>`_.
 #. `ClickHouse Kafka engine <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka>`_.
+#. `Approximate calculations <https://clickhouse.com/docs/en/sql-reference/statements/select/sample/>`_.
+#. `Array functions <https://clickhouse.com/docs/en/sql-reference/functions/array-functions/>`_
+#. `Cloudflare experience: ClickHouse Capacity Estimation Framework <https://blog.cloudflare.com/clickhouse-capacity-estimation-framework/>`_
 
 
 License
