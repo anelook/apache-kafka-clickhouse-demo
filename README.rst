@@ -236,8 +236,16 @@ Resources and additional materials
 #. How to start working with `Aiven for ClickHouse® <https://developer.aiven.io/docs/products/clickhouse/getting-started>`_.
 #. `ClickHouse Kafka engine <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka>`_.
 #. `Approximate calculations <https://clickhouse.com/docs/en/sql-reference/statements/select/sample/>`_.
-#. `Array functions <https://clickhouse.com/docs/en/sql-reference/functions/array-functions/>`_
-#. `Cloudflare experience: ClickHouse Capacity Estimation Framework <https://blog.cloudflare.com/clickhouse-capacity-estimation-framework/>`_
+#. `Array functions <https://clickhouse.com/docs/en/sql-reference/functions/array-functions/>`_.
+#. `Cloudflare experience: ClickHouse Capacity Estimation Framework <https://blog.cloudflare.com/clickhouse-capacity-estimation-framework/>`_.
+#. Benchmarking
+    #. `ClickHouse benchmark data collection <https://clickhouse.com/benchmark/dbms/>`_.
+    #. `Altinity benchmarks <https://altinity.com/benchmarks/>`_.
+    #. `1.1 Billion Taxi Rides <https://tech.marksblogg.com/billion-nyc-taxi-rides-clickhouse-cluster.html>`_.
+    #. `Benchmarks comparing QuestDB to InfluxDB, ClickHouse and TimescaleDB <https://questdb.io/blog/2021/05/10/questdb-release-6-0-tsbs-benchmark/>`_.
+#.  `Example data sets <https://clickhouse.com/docs/en/getting-started/example-datasets/>`_.
+
+
 
 
 License
