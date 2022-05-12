@@ -1,14 +1,18 @@
 Hands-on material for session "Optimal data lake for analytics: Apache Kafka and ClickHouse"
 ============================================================================================
 
-Hello all! This repository contains a set of instructions how to send data from an `Apache Kafka <https://kafka.apache.org/>`_ topic to a table in `ClickHouse <https://clickhouse.com/>`_ and how to run aggregation operations on data in ClickHouse.
+Hello all! This repository contains a set of instructions explaining how to work with a combination of Apache Kafka and ClickHouse. In particular, we'll look at how to send data from an `Apache Kafka <https://kafka.apache.org/>`_ topic to a table in `ClickHouse <https://clickhouse.com/>`_, how to transform the data with the help of ClickHouse materialized views and how to run aggregation requests.
 
-In this example we'll look at the educational system of Hogwarts. Every time a student enters a classroom an event is generated and sent to an Apache Kafka topic. The data is accumulated over years. We would like to store raw data long term in ClickHouse DBMS, shape it and send requests for data aggregation to efficiently analyse past data.
+We'll take the educational system of Hogwarts as an idea for our scenario. Every time a student enters a classroom an event is generated and sent to an Apache Kafka topic. The data is accumulated over years. We would like to send the raw data from this topic into ClickHouse for long term storage, shape it and send requests for data aggregation to efficiently analyse past data.
 
 Preparation steps
 ------------------
 
-To follow this session you'll need Apache Kafka and ClickHouse servers. I'll be setting up both of them on my local Mac machine. I'll leave the steps I do for a reference, however, you might need to adjust instructions if you're not Mac user.
+To follow these steps you'll need running instances of Apache Kafka and ClickHouse. I'll be running both of them on my local machine.
+
+You can find instructions on how to set up both of the instances in the `quick start for ClickHouse <https://clickhouse.com/docs/en/quick-start>`_ and `quick start for Apache Kafka <https://kafka.apache.org/quickstart>`_
+
+If you're using a mac machine, you can also use the instructions below:
 
 Set up Apache Kafka cluster (locally on Mac)
 ++++++++++++++++++++++++++++++++++++++++++++
@@ -35,7 +39,7 @@ You're ready to send requests to ClickHouse server, for example try
 Unzip example data
 +++++++++++++++++++
 
-In this repository you can find two files with data which we'll use to inject into Apache Kafka topic: classes_years_2_12.ndjson.zip and classes_years_13_22.ndjson.zip. Unzip them to retrieve ndjson files. ndjson stands for *Newline Delimited JSON* and is used to store streaming structured data.
+In this repository you can find two files containing data for our experiments: classes_years_2_12.ndjson.zip and classes_years_13_22.ndjson.zip. Unzip them to retrieve ndjson files. NDJSON stands for *Newline Delimited JSON* and is used to store streaming structured data.
 
 - **classes_years_2_12.ndjson** contains data for years 2002 - 2012 (2 615 075 items from 1030867200000 till 1368453600000)
 - **classes_years_13_22.ndjson** contains data for years 2013 - 2022 (2 649 615 items from 1378022400000 till 1652450400000)
@@ -46,13 +50,14 @@ There are 18 subjects, 3 classes per day. Educational year starts in September a
 Step # 1: create and populate a topic with class attendance data
 -----------------------------------------------------------------
 #. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic class-attendance --create``.
-#. Populate topic with the content of **classes_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < classes_years_2_12.ndjson``.
+#. Populate topic with the content of the first file **classes_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < classes_years_2_12.ndjson``. This will add first half of our data as a bulk.
+#. Run `send_data`, this script will send messages from the second file one by one, imitating a data flow into the topic.
 
 Step # 2: Bring data from the topic into ClickHouse table
 ------------------------------------------------------------
-To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka/>`_. To link it to the destination table we'll create a materialized view
+We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka/>`_ and `a materialized view <https://clickhouse.com/docs/en/guides/developer/working-with-json/json-other-approaches#using-materialized-views>` .
 
-1. Create ClickHouse Kafka engine table. We use **JSONAsString** to have granular control of each property later. Alternatively you can try **JSONEachRow**, but pay attention to complex json objects.
+1. In the ClickHouse client run SQL statement to create a Kafka engine table. For data format we use **JSONAsString** to have a granular control on transforming every property. Alternatively you can try **JSONEachRow**.
 
 .. code:: sql
 
@@ -83,7 +88,7 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
     ENGINE = MergeTree
     ORDER BY timestamp
 
-3. Create materialised view to establish connection with ClickHouse Kafka Engine:
+3. Create materialised view to establish connection between the Kafka Engine and the destination table:
 
 .. code:: sql
 
@@ -103,9 +108,21 @@ To bring the data from an Apache Kafka topic into ClickHouse we'll use a `built-
 
     SELECT count(*) FROM class_attendance
 
+
+.. code:: sql
+
+    SELECT student.house as house, sum(points)
+    FROM default.class_attendance
+    GROUP BY student.house
+
+
 Step # 3: Transform data into another table
 --------------------------------------------
-1. Create a new destination table of type MergeTree
+In this step our goal is to transform and aggregate data coming from ``class_attendance`` (source table), and store new information in a table ``student_presence``(destination table).
+
+Because the data is continuously flowing into the source table, we need to be careful not to miss any items when processing requests for the destination table. To  overcome this challenge, we'll select a timestamp in the future. Based on this timestamp we create a materialized view, and the old items we'll copy with the insert with the help of INSERT statement.
+
+1. Create a new destination table of a type MergeTree
 
 .. code:: sql
 
@@ -118,36 +135,53 @@ Step # 3: Transform data into another table
     ENGINE = MergeTree
     ORDER BY timestamp
 
-2. Create a new destination table of type MergeTree
+2. Check what is the timestamp of the latest event in the source table
 
 .. code:: sql
 
-    CREATE MATERIALIZED VIEW student_presence_mv
-    TO student_presence
-    AS SELECT
-        timestamp,
-        subject,
-        count(student) AS studentCount
-    FROM class_attendance
-    GROUP BY (timestamp, subject)
-    ORDER BY timestamp ASC
+    SELECT timestamp
+    FROM default.class_attendance
+    ORDER BY timestamp DESC
+    LIMIT 1
 
-3. If you run a query below, it will return 0 lines.
+3. Select a timestamp a bit farther in the future (you can use 1 or 2 days into the future, our data is moving fast enough)
+
+
+4.Create a materialized view
+
+.. code:: sql
+
+    CREATE MATERIALIZED VIEW default.materialized_view_student_presence TO default.student_presence
+    AS SELECT
+      timestamp,
+      subject,
+      count(student) as studentCount
+    FROM default.class_attendance
+    WHERE timestamp >= 'use-your-future-time-stamp-here'
+    Group by (timestamp, subject)
+    ORDER BY timestamp;
+
+5. Wait till you cross that date
+
+6. Verify that the data is flowing
 
 .. code:: sql
 
     SELECT count(*) FROM default.student_presence
 
- This is because by design materialised views will pull only new data from the source table. For the sake of our demo you can either add more data into the Apahce Kafka topic **class-attendance** or you can copy old lines manually from **class_attendance** into **student_presence** by running
+You should see low numbers of fresh data coming into the destination table (data starting from your selected timestamp)
+
+7. Copy the old data from the source table with a help of INSERT statement
 
 .. code:: sql
 
-    INSERT INTO student_presence
+    INSERT INTO default.student_presence
     SELECT
-        timestamp,
-        subject,
-        count(student) AS studentCount
-    FROM class_attendance
+      timestamp,
+      subject,
+      count(student) as studentCount
+    FROM default.class_attendance
+    WHERE timestamp < 'use-your-future-time-stamp-here'
     GROUP BY (timestamp, subject)
 
 4. Now you can see number of all rows by running
@@ -159,6 +193,9 @@ Step # 3: Transform data into another table
 
 Step # 4: Use AggregateFunction and SummingMergeTree
 -----------------------------------------------------
+Similar to the previous step, but now using a table that includes aggregate functions.
+We'll pre-aggregate data about maximum/minimum/average students in a class.
+
 1. Create a destination table of type SummingMergeTree
 
 .. code:: sql
@@ -187,6 +224,7 @@ Step # 4: Use AggregateFunction and SummingMergeTree
         minState(studentCount) AS min_intermediate_state,
         avgState(studentCount) AS avg_intermediate_state
     FROM default.student_presence
+    WHERE timestamp >= 'use-your-future-time-stamp-here'
     GROUP BY
         day,
         subject
@@ -194,7 +232,7 @@ Step # 4: Use AggregateFunction and SummingMergeTree
         day ASC,
         subject ASC
 
-3. As mentioned before, materialized view will send only new records into the destination table, so if you want to bring existing records, run:
+3. The materialized view will only process new records, so if you want to bring old records, run:
 
 .. code:: sql
 
@@ -206,16 +244,17 @@ Step # 4: Use AggregateFunction and SummingMergeTree
       minState(studentCount) AS min_intermediate_state,
       avgState(studentCount) AS avg_intermediate_state
     FROM default.student_presence
+    WHERE timestamp < 'use-your-future-time-stamp-here'
     GROUP BY day, subject
     ORDER BY day, subject
 
-4. maxState, minState and avgState calculate intermediate values, and by themselves they don't bring any value. You can try retrieving first 10 lines to see that there is no readable values in this table.
+4. **maxState**, **minState** and **avgState** calculate intermediate values, and by themselves they don't bring any value. You can try retrieving first 10 lines to see that there is no readable values in those columns.
 
 .. code:: sql
 
     SELECT * FROM default.student_aggregates_daily LIMIT 10
 
-To properly select the aggregated data run
+To properly select the aggregated data we need to merge it back:
 
 .. code:: sql
 
@@ -233,8 +272,10 @@ Resources and additional materials
 ----------------------------------
 #. `Official docs for Apache Kafka <https://kafka.apache.org/>`_.
 #. `Official docs for ClickHouse <https://clickhouse.com/docs/en/intro>`_.
+#. `Distinctive Features of ClickHouse <https://clickhouse.com/docs/en/about-us/distinctive-features>`_.
 #. How to start working with `Aiven for ClickHouse® <https://developer.aiven.io/docs/products/clickhouse/getting-started>`_.
 #. `ClickHouse Kafka engine <https://clickhouse.com/docs/en/engines/table-engines/integrations/kafka>`_.
+#. `Using Materialized Views <https://clickhouse.com/docs/en/guides/developer/working-with-json/json-other-approaches#using-materialized-views>`_.
 #. `Approximate calculations <https://clickhouse.com/docs/en/sql-reference/statements/select/sample/>`_.
 #. `Array functions <https://clickhouse.com/docs/en/sql-reference/functions/array-functions/>`_.
 #. `Cloudflare experience: ClickHouse Capacity Estimation Framework <https://blog.cloudflare.com/clickhouse-capacity-estimation-framework/>`_.
@@ -243,9 +284,7 @@ Resources and additional materials
     #. `Altinity benchmarks <https://altinity.com/benchmarks/>`_.
     #. `1.1 Billion Taxi Rides <https://tech.marksblogg.com/billion-nyc-taxi-rides-clickhouse-cluster.html>`_.
     #. `Benchmarks comparing QuestDB to InfluxDB, ClickHouse and TimescaleDB <https://questdb.io/blog/2021/05/10/questdb-release-6-0-tsbs-benchmark/>`_.
-#.  `Example data sets <https://clickhouse.com/docs/en/getting-started/example-datasets/>`_.
-
-
+#.  `A variety of example data sets <https://clickhouse.com/docs/en/getting-started/example-datasets/>`_.
 
 
 License
