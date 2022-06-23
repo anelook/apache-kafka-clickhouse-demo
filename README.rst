@@ -1,4 +1,4 @@
-Hands-on material for session "Optimal data lake for analytics: Apache Kafka and ClickHouse"
+Hands-on material for session "Apache Kafka and ClickHouse"
 ============================================================================================
 
 Hello all! This repository contains a set of instructions explaining how to work with a combination of Apache Kafka and ClickHouse. In particular, we'll look at how to send data from an `Apache Kafka <https://kafka.apache.org/>`_ topic to a table in `ClickHouse <https://clickhouse.com/>`_, how to transform the data with the help of ClickHouse materialized views and how to run aggregation requests.
