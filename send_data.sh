@@ -5,4 +5,4 @@ while read line; do
 
      echo "Sent message"
 
-done < classes_years_2013_2022.ndjson
+done < events_years_13_22.ndjson
