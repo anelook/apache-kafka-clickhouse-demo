@@ -28,7 +28,7 @@ Set up ClickHouse cluster (using Docker)
 ++++++++++++++++++++++++++++++++++++++++++++
 #. Pull Docker image ``docker pull clickhouse/clickhouse-server``, read more in `docker hub reference page <https://hub.docker.com/r/clickhouse/clickhouse-server/>`_.
 #. Start server instance ``docker run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server``.
-#. Most convenient way to run SQL queries is to use `ClickHouse native client <https://hub.docker.com/r/clickhouse/clickhouse-client>`_ . To connect to native client run ``run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server``.
+#. Most convenient way to run SQL queries is to use `ClickHouse native client <https://hub.docker.com/r/clickhouse/clickhouse-client>`_ . To connect to native client run ``docker run -it --rm --link some-clickhouse-server:clickhouse-server clickhouse/clickhouse-client --host clickhouse-server``.
 
 You're ready to send requests to ClickHouse server, for example try
 
@@ -49,7 +49,7 @@ There are 18 subjects, 3 classes per day. Educational year starts in September a
 
 Step # 1: create and populate a topic with class attendance data
 -----------------------------------------------------------------
-#. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic class-attendance --create``.
+#. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic entry_event --create``.
 #. Populate topic with the content of the first file **events_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < events_years_2_12.ndjson``. This will add first half of our data as a bulk.
 #. Run `send_data`, this script will send messages from the second file one by one, imitating a data flow into the topic.
 
@@ -68,7 +68,7 @@ We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com
     ENGINE = Kafka
     SETTINGS
         kafka_broker_list = 'host.docker.internal:9092',
-        kafka_topic_list = 'class-attendance',
+        kafka_topic_list = 'entry_event',
         kafka_group_name = 'group1',
         kafka_format = 'JSONAsString'
 
@@ -285,6 +285,12 @@ Resources and additional materials
     #. `1.1 Billion Taxi Rides <https://tech.marksblogg.com/billion-nyc-taxi-rides-clickhouse-cluster.html>`_.
     #. `Benchmarks comparing QuestDB to InfluxDB, ClickHouse and TimescaleDB <https://questdb.io/blog/2021/05/10/questdb-release-6-0-tsbs-benchmark/>`_.
 #.  `A variety of example data sets <https://clickhouse.com/docs/en/getting-started/example-datasets/>`_.
+#. Mentioned usage by other companies
+    #. `Idealista - <https://www.youtube.com/watch?v=2elxfA0k1ag&ab_channel=Tinybird>`_.
+    #. `Ebay - Our Online Analytical Processing Journey with ClickHouse on Kubernetes <https://tech.ebayinc.com/engineering/ou-online-analytical-processing/>`_.
+    #. `Sentry - Introducing Snuba: Sentry's New Search Infrastructure <https://blog.sentry.io/2019/05/16/introducing-snuba-sentrys-new-search-infrastructure>`_.
+    #. `Cloudflare - HTTP Analytics for 6M requests per second using ClickHouse <https://blog.cloudflare.com/http-analytics-for-6m-requests-per-second-using-clickhouse/>`_.
+#. `Understanding ClickHouse Data Skipping Indexes <https://clickhouse.com/docs/en/guides/improving-query-performance/skipping-indexes/>`_.
 
 
 License
