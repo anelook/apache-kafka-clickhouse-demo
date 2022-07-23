@@ -49,8 +49,8 @@ There are 18 subjects, 3 classes per day. Educational year starts in September a
 
 Step # 1: create and populate a topic with class attendance data
 -----------------------------------------------------------------
-#. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic entry_event --create``.
-#. Populate topic with the content of the first file **events_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t classes-attendance < events_years_2_12.ndjson``. This will add first half of our data as a bulk.
+#. Create Apache Kafka topic ``kafka-topics --bootstrap-server localhost:9092 --topic entry-events --create``.
+#. Populate topic with the content of the first file **events_years_2_12.ndjson** by running ``kcat -F kcat.config -P -t entry-events < events_years_2_12.ndjson``. This will add first half of our data as a bulk.
 #. Run `send_data`, this script will send messages from the second file one by one, imitating a data flow into the topic.
 
 Step # 2: Bring data from the topic into ClickHouse table
@@ -61,14 +61,14 @@ We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com
 
 .. code:: sql
 
-    CREATE TABLE entry_event_queue
+    CREATE TABLE entry_events_queue
     (
         `message` String
     )
     ENGINE = Kafka
     SETTINGS
         kafka_broker_list = 'host.docker.internal:9092',
-        kafka_topic_list = 'entry_event',
+        kafka_topic_list = 'entry-events',
         kafka_group_name = 'group1',
         kafka_format = 'JSONAsString'
 
@@ -76,7 +76,7 @@ We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com
 
 .. code:: sql
 
-    CREATE TABLE student_entry_event
+    CREATE TABLE student_entry_events
     (
         `timestamp` DateTime,
         `subject` String,
@@ -92,7 +92,7 @@ We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com
 
 .. code:: sql
 
-    CREATE MATERIALIZED VIEW materialized_view TO student_entry_event
+    CREATE MATERIALIZED VIEW materialized_view TO student_entry_events
     AS SELECT
         fromUnixTimestamp64Milli(JSONExtractUInt(message, 'timestamp')) AS timestamp,
         JSONExtractString(message, 'subject') AS subject,
@@ -100,25 +100,25 @@ We'll use a `built-in ClickHouse engine for Apache Kafka <https://clickhouse.com
         JSONExtractString(message, 'room') AS room,
         toInt8(JSONExtractInt(message, 'points')) AS points,
         JSONExtract(message, 'student', 'Tuple(String,String)') AS student
-    FROM entry_event_queue
+    FROM entry_events_queue
 
 4. Test that you have the data:
 
 .. code:: sql
 
-    SELECT count(*) FROM student_entry_event
+    SELECT count(*) FROM student_entry_events
 
 
 .. code:: sql
 
     SELECT student.house as house, sum(points)
-    FROM default.student_entry_event
+    FROM default.student_entry_events
     GROUP BY student.house
 
 
 Step # 3: Transform data into another table
 --------------------------------------------
-In this step our goal is to transform and aggregate data coming from ``student_entry_event`` (source table), and store new information in a table ``class_attendance_granular``(destination table).
+In this step our goal is to transform and aggregate data coming from ``student_entry_events`` (source table), and store new information in a table ``class_attendance_granular``(destination table).
 
 Because the data is continuously flowing into the source table, we need to be careful not to miss any items when processing requests for the destination table. To  overcome this challenge, we'll select a timestamp in the future. Based on this timestamp we create a materialized view, and the old items we'll copy with the insert with the help of INSERT statement.
 
@@ -140,7 +140,7 @@ Because the data is continuously flowing into the source table, we need to be ca
 .. code:: sql
 
     SELECT timestamp
-    FROM default.student_entry_event
+    FROM default.student_entry_events
     ORDER BY timestamp DESC
     LIMIT 1
 
@@ -156,7 +156,7 @@ Because the data is continuously flowing into the source table, we need to be ca
       timestamp,
       subject,
       count(student) as studentCount
-    FROM default.student_entry_event
+    FROM default.student_entry_events
     WHERE timestamp >= 'use-your-future-time-stamp-here'
     Group by (timestamp, subject)
     ORDER BY timestamp;
@@ -180,7 +180,7 @@ You should see low numbers of fresh data coming into the destination table (data
       timestamp,
       subject,
       count(student) as studentCount
-    FROM default.student_entry_event
+    FROM default.student_entry_events
     WHERE timestamp < 'use-your-future-time-stamp-here'
     GROUP BY (timestamp, subject)
 
@@ -189,6 +189,9 @@ You should see low numbers of fresh data coming into the destination table (data
 .. code:: sql
 
     SELECT count(*) FROM default.class_attendance_granular
+
+
+SELECT * FROM default.class_attendance_granular LIMIT 20
 
 
 Step # 4: Use AggregateFunction and SummingMergeTree
@@ -204,9 +207,9 @@ We'll pre-aggregate data about maximum/minimum/average students in a class.
     (
         `day` DateTime,
         `subject` String,
-        `max_interm_state` AggregateFunction(max, UInt16),
-        `min_interm_state` AggregateFunction(min, UInt16),
-        `avg_interm_state` AggregateFunction(avg, UInt16)
+        `max_intermediate_state` AggregateFunction(max, UInt16),
+        `min_intermediate_state` AggregateFunction(min, UInt16),
+        `avg_intermediate_state` AggregateFunction(avg, UInt16)
     )
     ENGINE = SummingMergeTree
     PARTITION BY tuple()
